@@ -90,7 +90,14 @@ format_bytes() {
 echo "Recent XC API Activity:"
 echo "=================================================="
 
-docker exec dispatcharr tail -n $LINES /var/log/nginx/access.log | grep -E "player_api|/live/.*\.ts|/movie/|/series/|xmltv.php" | while IFS= read -r line; do
+# Pre-filter by username if specified
+if [ -n "$USERNAME_FILTER" ]; then
+    GREP_FILTER="username=$USERNAME_FILTER|/(live|movie|series)/$USERNAME_FILTER/"
+else
+    GREP_FILTER="player_api|/live/.*\.ts|/movie/|/series/|xmltv.php"
+fi
+
+docker exec dispatcharr tail -n $LINES /var/log/nginx/access.log | grep -E "$GREP_FILTER" | while IFS= read -r line; do
     # Extract fields
     IP=$(echo "$line" | awk '{print $1}')
     TIMESTAMP=$(echo "$line" | grep -oP '\[\K[^\]]+')
@@ -101,11 +108,6 @@ docker exec dispatcharr tail -n $LINES /var/log/nginx/access.log | grep -E "play
     
     # Extract username
     USERNAME=$(get_username "$REQUEST")
-    
-    # Apply username filter if specified
-    if [ -n "$USERNAME_FILTER" ] && [ "$USERNAME" != "$USERNAME_FILTER" ]; then
-        continue
-    fi
     
     # Get request type
     REQ_TYPE=$(get_request_type "$REQUEST")
@@ -140,7 +142,7 @@ echo "Summary by User:"
 echo "=================================================="
 
 # Create summary
-docker exec dispatcharr tail -n $LINES /var/log/nginx/access.log | grep -E "player_api|/live/.*\.ts|/movie/|/series/" | while IFS= read -r line; do
+docker exec dispatcharr tail -n $LINES /var/log/nginx/access.log | grep -E "$GREP_FILTER" | while IFS= read -r line; do
     REQUEST=$(echo "$line" | grep -oP '"(GET|POST)\s+\K[^"]+' | head -1)
     USERNAME=$(get_username "$REQUEST")
     if [ -n "$USERNAME" ]; then
@@ -155,7 +157,7 @@ echo "=================================================="
 echo "Summary by Request Type:"
 echo "=================================================="
 
-docker exec dispatcharr tail -n $LINES /var/log/nginx/access.log | grep -E "player_api|/live/.*\.ts|/movie/|/series/" | while IFS= read -r line; do
+docker exec dispatcharr tail -n $LINES /var/log/nginx/access.log | grep -E "$GREP_FILTER" | while IFS= read -r line; do
     REQUEST=$(echo "$line" | grep -oP '"(GET|POST)\s+\K[^"]+' | head -1)
     get_request_type "$REQUEST"
 done | sort | uniq -c | sort -rn | while read count type; do
@@ -167,7 +169,7 @@ echo "=================================================="
 echo "Active IPs by User:"
 echo "=================================================="
 
-docker exec dispatcharr tail -n $LINES /var/log/nginx/access.log | grep -E "player_api|/live/.*\.ts|/movie/|/series/" | while IFS= read -r line; do
+docker exec dispatcharr tail -n $LINES /var/log/nginx/access.log | grep -E "$GREP_FILTER" | while IFS= read -r line; do
     IP=$(echo "$line" | awk '{print $1}')
     REQUEST=$(echo "$line" | grep -oP '"(GET|POST)\s+\K[^"]+' | head -1)
     USERNAME=$(get_username "$REQUEST")
