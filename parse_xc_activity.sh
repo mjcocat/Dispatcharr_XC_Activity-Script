@@ -1,21 +1,33 @@
 #!/bin/bash
 
 # Parse XC API activity from nginx logs and display to stdout
-# Usage: ./parse_xc_activity.sh [number_of_lines] [username_filter]
+# Usage: ./parse_xc_activity.sh [days_back] [username_filter]
 
-LINES=${1:-1000}
+DAYS_BACK=${1:-7}
 USERNAME_FILTER=${2:-""}
 
 echo "=================================================="
 echo "XC API Activity Parser"
 echo "=================================================="
-echo "Analyzing last $LINES nginx log entries"
+echo "Analyzing last $DAYS_BACK day(s) of activity"
 if [ -n "$USERNAME_FILTER" ]; then
     echo "Filtering for username: $USERNAME_FILTER"
 fi
 echo ""
 
-# Function to extract timestamp in readable format
+# Calculate cutoff date (current time minus DAYS_BACK days)
+CUTOFF_TIMESTAMP=$(date -d "$DAYS_BACK days ago" +%s)
+echo "Cutoff date: $(date -d "@$CUTOFF_TIMESTAMP" '+%Y-%m-%d %H:%M:%S')"
+echo ""
+
+# Function to convert nginx timestamp to epoch
+nginx_to_epoch() {
+    local nginx_date="$1"
+    # nginx format: 06/Nov/2025:19:22:38 +0000
+    date -d "$(echo $nginx_date | sed 's|/|-|g; s|:| |; s| +.*||')" +%s 2>/dev/null
+}
+
+# Function to parse timestamp in readable format
 parse_timestamp() {
     echo "$1" | sed 's/\[//g' | sed 's/\]//g' | awk '{print $1, $2}'
 }
@@ -82,13 +94,9 @@ format_bytes() {
     elif [ $bytes -lt 1073741824 ]; then
         echo "$(($bytes / 1048576))MB"
     else
-        echo "$(($bytes / 1073741824))GB"
+        printf "%.2fGB" $(echo "scale=2; $bytes / 1073741824" | bc)
     fi
 }
-
-# Parse logs
-echo "Recent XC API Activity:"
-echo "=================================================="
 
 # Pre-filter by username if specified
 if [ -n "$USERNAME_FILTER" ]; then
@@ -97,10 +105,26 @@ else
     GREP_FILTER="player_api|/live/.*\.ts|/movie/|/series/|xmltv.php"
 fi
 
-docker exec dispatcharr tail -n $LINES /var/log/nginx/access.log | grep -E "$GREP_FILTER" | while IFS= read -r line; do
+# Create temp file for storing parsed data
+TEMP_FILE=$(mktemp)
+trap "rm -f $TEMP_FILE" EXIT
+
+# Parse all logs and filter by date
+echo "Parsing logs..."
+docker exec dispatcharr cat /var/log/nginx/access.log | grep -E "$GREP_FILTER" | while IFS= read -r line; do
+    # Extract timestamp
+    TIMESTAMP=$(echo "$line" | grep -oP '\[\K[^\]]+')
+    
+    # Convert to epoch
+    LOG_EPOCH=$(nginx_to_epoch "$TIMESTAMP")
+    
+    # Skip if we couldn't parse the date or if it's older than cutoff
+    if [ -z "$LOG_EPOCH" ] || [ $LOG_EPOCH -lt $CUTOFF_TIMESTAMP ]; then
+        continue
+    fi
+    
     # Extract fields
     IP=$(echo "$line" | awk '{print $1}')
-    TIMESTAMP=$(echo "$line" | grep -oP '\[\K[^\]]+')
     REQUEST=$(echo "$line" | grep -oP '"(GET|POST)\s+\K[^"]+' | head -1)
     STATUS=$(echo "$line" | awk '{print $9}')
     BYTES=$(echo "$line" | awk '{print $10}')
@@ -109,6 +133,21 @@ docker exec dispatcharr tail -n $LINES /var/log/nginx/access.log | grep -E "$GRE
     # Extract username
     USERNAME=$(get_username "$REQUEST")
     
+    # Store in temp file
+    echo "$TIMESTAMP|$USERNAME|$IP|$REQUEST|$STATUS|$BYTES|$USER_AGENT" >> $TEMP_FILE
+done
+
+# Count total entries
+TOTAL_ENTRIES=$(wc -l < $TEMP_FILE)
+echo "Found $TOTAL_ENTRIES matching entries"
+echo ""
+
+# Parse logs
+echo "Recent XC API Activity:"
+echo "=================================================="
+
+# Show last 50 entries
+tail -50 $TEMP_FILE | while IFS='|' read -r TIMESTAMP USERNAME IP REQUEST STATUS BYTES USER_AGENT; do
     # Get request type
     REQ_TYPE=$(get_request_type "$REQUEST")
     
@@ -133,22 +172,41 @@ docker exec dispatcharr tail -n $LINES /var/log/nginx/access.log | grep -E "$GRE
     echo "Status:   $STATUS"
     echo "Data:     $BYTES_FORMATTED"
     echo "Device:   $USER_AGENT_SHORT"
-    
 done
 
 echo ""
 echo "=================================================="
-echo "Summary by User:"
+echo "Data Consumption by User:"
 echo "=================================================="
 
-# Create summary
-docker exec dispatcharr tail -n $LINES /var/log/nginx/access.log | grep -E "$GREP_FILTER" | while IFS= read -r line; do
-    REQUEST=$(echo "$line" | grep -oP '"(GET|POST)\s+\K[^"]+' | head -1)
-    USERNAME=$(get_username "$REQUEST")
-    if [ -n "$USERNAME" ]; then
-        echo "$USERNAME"
+# Calculate total bytes per user
+declare -A user_bytes
+declare -A user_counts
+
+while IFS='|' read -r TIMESTAMP USERNAME IP REQUEST STATUS BYTES USER_AGENT; do
+    if [ -n "$USERNAME" ] && [ -n "$BYTES" ] && [ "$BYTES" != "-" ]; then
+        user_bytes[$USERNAME]=$((${user_bytes[$USERNAME]:-0} + BYTES))
+        user_counts[$USERNAME]=$((${user_counts[$USERNAME]:-0} + 1))
     fi
-done | sort | uniq -c | sort -rn | while read count user; do
+done < $TEMP_FILE
+
+# Sort by bytes consumed and display
+for user in "${!user_bytes[@]}"; do
+    bytes=${user_bytes[$user]}
+    count=${user_counts[$user]}
+    formatted=$(format_bytes $bytes)
+    echo "$bytes|$user|$count|$formatted"
+done | sort -t'|' -k1 -rn | while IFS='|' read -r bytes user count formatted; do
+    printf "  %-15s %12s (%d requests)\n" "$user:" "$formatted" "$count"
+done
+
+echo ""
+echo "=================================================="
+echo "Summary by User (Request Count):"
+echo "=================================================="
+
+# Count requests per user
+cat $TEMP_FILE | cut -d'|' -f2 | grep -v '^$' | sort | uniq -c | sort -rn | while read count user; do
     echo "  $user: $count requests"
 done
 
@@ -157,9 +215,9 @@ echo "=================================================="
 echo "Summary by Request Type:"
 echo "=================================================="
 
-docker exec dispatcharr tail -n $LINES /var/log/nginx/access.log | grep -E "$GREP_FILTER" | while IFS= read -r line; do
-    REQUEST=$(echo "$line" | grep -oP '"(GET|POST)\s+\K[^"]+' | head -1)
-    get_request_type "$REQUEST"
+# Count by request type
+cat $TEMP_FILE | cut -d'|' -f4 | while read request; do
+    get_request_type "$request"
 done | sort | uniq -c | sort -rn | while read count type; do
     echo "  $type: $count requests"
 done
@@ -169,14 +227,23 @@ echo "=================================================="
 echo "Active IPs by User:"
 echo "=================================================="
 
-docker exec dispatcharr tail -n $LINES /var/log/nginx/access.log | grep -E "$GREP_FILTER" | while IFS= read -r line; do
-    IP=$(echo "$line" | awk '{print $1}')
-    REQUEST=$(echo "$line" | grep -oP '"(GET|POST)\s+\K[^"]+' | head -1)
-    USERNAME=$(get_username "$REQUEST")
-    if [ -n "$USERNAME" ]; then
-        echo "$USERNAME|$IP"
-    fi
-done | sort -u | awk -F'|' '{print "  " $1 " -> " $2}'
+# List unique IPs per user
+cat $TEMP_FILE | awk -F'|' '{print $2 "|" $3}' | sort -u | awk -F'|' '{if ($1) print "  " $1 " -> " $2}'
+
+echo ""
+echo "=================================================="
+echo "Summary:"
+echo "=================================================="
+echo "  Time period: Last $DAYS_BACK day(s)"
+echo "  Total entries: $TOTAL_ENTRIES"
+echo "  Unique users: $(cat $TEMP_FILE | cut -d'|' -f2 | grep -v '^$' | sort -u | wc -l)"
+echo "  Unique IPs: $(cat $TEMP_FILE | cut -d'|' -f3 | sort -u | wc -l)"
+
+# Calculate total data transferred
+TOTAL_BYTES=$(cat $TEMP_FILE | cut -d'|' -f6 | grep -v '^$' | grep -v '^-$' | awk '{sum+=$1} END {print sum}')
+if [ -n "$TOTAL_BYTES" ]; then
+    echo "  Total data: $(format_bytes $TOTAL_BYTES)"
+fi
 
 echo ""
 echo "Done!"
