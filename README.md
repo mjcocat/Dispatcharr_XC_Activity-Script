@@ -36,7 +36,7 @@ Summary by User (Request Count):
 ==================================================
   joe: 45 requests
   randy: 1 requests
-  dreyer: 1 requests
+  bob: 1 requests
 
 ==================================================
 Summary by Request Type:
