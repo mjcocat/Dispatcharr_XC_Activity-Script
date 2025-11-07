@@ -8,8 +8,8 @@ chmod +x parse_xc_activity.sh
 sudo ./parse_xc_activity.sh
 
 Sample Output
-==================
-ime:     07/Nov/2025:03:04:03 +0000
+
+```Time:     07/Nov/2025:03:04:03 +0000
 User:     Joe
 IP:       24.10.15.3
 Type:     STREAM: Live TV
@@ -18,7 +18,7 @@ Data:     1MB
 Device:   libmpv
 ---
 Time:     07/Nov/2025:03:04:19 +0000
-User:     mike
+User:     Joe
 IP:       24.10.15.3
 Type:     STREAM: Live TV
 Status:   200
