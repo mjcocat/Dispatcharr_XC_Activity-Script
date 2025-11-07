@@ -34,7 +34,7 @@ Data Consumption by User:
 ==================================================
 Summary by User (Request Count):
 ==================================================
-  mike: 45 requests
+  joe: 45 requests
   randy: 1 requests
   dreyer: 1 requests
 
