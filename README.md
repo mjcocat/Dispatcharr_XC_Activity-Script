@@ -5,19 +5,19 @@ Bash script to view XC API activity
 chmod +x parse_xc_activity.sh
 
 # Usage
-Default: last 7 days, all users
++ Default: last 7 days, all users
 
 ./parse_xc_activity.sh
 
-Last 30 days
++ Last 30 days
 
 ./parse_xc_activity.sh 30
 
-Last 1 day, filter for user "joe"
++ Last 1 day, filter for user "joe"
 
-./parse_xc_activity.sh 1 mike
+./parse_xc_activity.sh 1 joe
 
-Last 14 days, filter for user "randy"
++ Last 14 days, filter for user "randy"
 
 ./parse_xc_activity.sh 14 randy
 
