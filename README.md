@@ -4,48 +4,74 @@ Bash script to view XC API activity
 # Copy to your server and make executable
 chmod +x parse_xc_activity.sh
 
-# Run it
-sudo ./parse_xc_activity.sh
+# Usage
+Default: last 7 days, all users
 
-sudo ./parse_xc_activity.sh 5000 (Analyze more entries)
+./parse_xc_activity.sh
 
-sudo ./parse_xc_activity.sh 1000 joe (Filter for specific user)
+Last 30 days
+
+./parse_xc_activity.sh 30
+
+Last 1 day, filter for user "joe"
+
+./parse_xc_activity.sh 1 mike
+
+Last 14 days, filter for user "randy"
+
+./parse_xc_activity.sh 14 randy
 
 # Sample Output
 
-```Time:     07/Nov/2025:03:04:03 +0000
-User:     Joe
-IP:       24.10.15.3
-Type:     STREAM: Live TV
-Status:   200
-Data:     1MB
-Device:   libmpv
----
-Time:     07/Nov/2025:03:04:19 +0000
-User:     Joe
-IP:       24.10.15.3
-Type:     STREAM: Live TV
-Status:   200
-Data:     30MB
-Device:   libmpv
+```
+==================================================
+Data Consumption by User:
+==================================================
+  joe:                 6.16GB (45 requests)
+  randy:                  36MB (1 requests)
+  bob:                    23MB (1 requests)
 
 ==================================================
-Summary by User:
+Summary by User (Request Count):
 ==================================================
-  joe: 5 requests
+  mike: 45 requests
+  randy: 1 requests
+  dreyer: 1 requests
 
 ==================================================
 Summary by Request Type:
 ==================================================
-  STREAM: Live TV: 5 requests
+  STREAM: Live TV: 16 requests
+  EPG: Guide Data: 7 requests
+  API: Get Series: 6 requests
+  API: Authentication: 6 requests
+  API: Get VOD Streams: 3 requests
+  API: Get VOD Categories: 3 requests
+  API: Get Live Streams: 3 requests
+  API: Get Live Categories: 3 requests
 
 ==================================================
 Active IPs by User:
 ==================================================
+  bob -> 10.19.170.24
   joe -> 10.18.10.15
   joe -> 24.10.15.3
   joe -> 172.56.25.68
   joe -> 24.10.15.3
+  randy -> 10.29.170.15
+
+==================================================
+Summary:
+==================================================
+  Time period: Last 3 day(s)
+  Total entries: 47
+  Unique users: 3
+  Unique IPs: 6
+  Total data: 6.22GB
+
+Done!
+==================================================
+
 
 Done!
 ==================================================
