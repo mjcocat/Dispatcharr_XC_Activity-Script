@@ -7,7 +7,11 @@ chmod +x parse_xc_activity.sh
 # Run it
 sudo ./parse_xc_activity.sh
 
-Sample Output
+sudo ./parse_xc_activity.sh 5000 (Analyze more entries)
+
+sudo ./parse_xc_activity.sh 1000 joe (Filter for specific user)
+
+# Sample Output
 
 ```Time:     07/Nov/2025:03:04:03 +0000
 User:     Joe
